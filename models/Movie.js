@@ -21,20 +21,11 @@ const movieSchema = new mongoose.Schema({
   runtime: Number,
   director: String,
   cast: [String],
-  keywords: [String],
-  streamingServices: [{
-    name: String,
-    url: String
-  }],
-  embedding: [Number], // AI embedding vector
-  popularity: Number,
-  voteCount: Number
 }, {
   timestamps: true
 });
 
 movieSchema.index({ genres: 1 });
 movieSchema.index({ rating: -1 });
-movieSchema.index({ popularity: -1 });
 
 module.exports = mongoose.model('Movie', movieSchema);

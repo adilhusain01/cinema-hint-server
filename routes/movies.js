@@ -350,9 +350,7 @@ router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) 
         const recommendation = {
           movieId: movieDetails.tmdbId,
           title: movieDetails.title,
-          reason: aiResponse.reason,
           accepted: null,
-          timestamp: new Date()
         };
 
         // Add to history only if it's a new recommendation
@@ -368,8 +366,6 @@ router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) 
           const finalRecommendation = {
             ...movieDetails,
             reason: aiResponse.reason,
-            aiGenre: aiResponse.genre,
-            aiRating: aiResponse.rating
           };
 
           return res.json(finalRecommendation);
