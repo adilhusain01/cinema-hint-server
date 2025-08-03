@@ -233,7 +233,7 @@ router.post('/preferences', authMiddleware, async (req, res) => {
 router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) => {
   try {
     const user = req.user;
-    const { genres, moods, socialContext, dealBreakers } = req.body;
+    const { genres, moods, socialContext, dealBreakers, isAlternative = false } = req.body;
 
     // Access the Map data directly instead of using toObject()
     const likedMovies = user.preferences.likedMovies || new Map();
@@ -276,18 +276,39 @@ router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) 
       moods,
       socialContext,
       dealBreakers,
-      previouslyRecommended: user.recommendationHistory.map(rec => rec.title).join(', ') || ''
+      previouslyRecommended: user.recommendationHistory.map(rec => rec.title).join(', ') || '',
+      isAlternative
     };
     
     console.log('Session preferences with filtered movies:', preferences);
 
-    // Build recommendation prompt with the filtered preferences
-    const prompt = buildRecommendationPrompt(preferences);
+    // Generate recommendation using the unified function
+    const recommendation = await generateMovieRecommendation(user, preferences);
     
-    let attempts = 0;
-    const maxAttempts = 3; // Maximum attempts to get a new recommendation
-    
-    while (attempts < maxAttempts) {
+    if (!recommendation) {
+      return res.status(404).json({ 
+        error: 'Could not find a new movie recommendation. Try adjusting your preferences or try again later.'
+      });
+    }
+
+    res.json(recommendation);
+
+  } catch (error) {
+    console.error('Error generating recommendation:', error);
+    res.status(500).json({ error: 'Failed to generate recommendation' });
+  }
+});
+
+
+async function generateMovieRecommendation(user, preferences) {
+  const maxAttempts = preferences.isAlternative ? 5 : 3; // More attempts for alternatives
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    try {
+      // Build recommendation prompt
+      const prompt = buildRecommendationPrompt(preferences, attempts);
+      
       // Get AI recommendation
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
@@ -302,7 +323,7 @@ router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) 
           }
         ],
         max_tokens: 500,
-        temperature: 0.7 + (attempts * 0.1) // Increase randomness with each attempt
+        temperature: 0.7 + (attempts * 0.15) // Increase randomness with each attempt (more for alternatives)
       });
 
       let aiResponse;
@@ -322,7 +343,7 @@ router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) 
         console.error('JSON parsing error:', parseError);
         console.error('Raw response:', completion.choices[0].message.content);
         attempts++;
-        continue; // Try again with increased temperature
+        continue;
       }
       
       // Validate required fields
@@ -368,24 +389,19 @@ router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) 
             reason: aiResponse.reason,
           };
 
-          return res.json(finalRecommendation);
+          return finalRecommendation;
         }
       }
       
       attempts++;
+    } catch (error) {
+      console.error(`Attempt ${attempts + 1} failed:`, error);
+      attempts++;
     }
-
-    // If we couldn't find a new recommendation after max attempts
-    return res.status(404).json({ 
-      error: 'Could not find a new movie recommendation. Try adjusting your preferences or try again later.'
-    });
-
-  } catch (error) {
-    console.error('Error generating recommendation:', error);
-    res.status(500).json({ error: 'Failed to generate recommendation' });
   }
-});
 
+  return null; // Could not find a recommendation after max attempts
+}
 
 router.post('/feedback', authMiddleware, async (req, res) => {
   try {
@@ -443,87 +459,7 @@ router.post('/feedback', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/backup', authMiddleware, async (req, res) => {
-  try {
-    const user = req.user;
-    const { selectedGenres = [], moods = [], socialContext = '', dealBreakers = [] } = req.body;
-    
-    // Create a temporary preferences object with the current session data
-    const sessionPreferences = {
-      ...user.preferences.toObject(),
-      // Add session-specific preferences
-      selectedGenres,
-      moods,
-      socialContext,
-      dealBreakers
-    };
-    
-    // Get 2-3 backup recommendations
-    const backupPrompt = buildBackupRecommendationPrompt(sessionPreferences);
-    
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: "Provide 2-3 alternative movie recommendations in valid JSON array format only (no markdown code blocks). Each should have: title, year, reason, genre."
-        },
-        {
-          role: "user",
-          content: backupPrompt
-        }
-      ],
-      max_tokens: 800,
-      temperature: 0.8
-    });
 
-    let backupMovies;
-    try {
-      // Clean the response content to handle potential markdown formatting
-      let responseContent = completion.choices[0].message.content.trim();
-      
-      // Remove markdown code blocks if present
-      if (responseContent.startsWith('```json')) {
-        responseContent = responseContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (responseContent.startsWith('```')) {
-        responseContent = responseContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
-      backupMovies = JSON.parse(responseContent);
-    } catch (parseError) {
-      console.error('JSON parsing error in backup recommendations:', parseError);
-      console.error('Raw response:', completion.choices[0].message.content);
-      return res.status(500).json({ error: 'Failed to parse backup recommendations' });
-    }
-
-    // Ensure backupMovies is an array
-    if (!Array.isArray(backupMovies)) {
-      console.error('Backup movies response is not an array:', backupMovies);
-      return res.status(500).json({ error: 'Invalid backup recommendations format' });
-    }
-    
-    // Enrich backup movies with TMDB data
-    const enrichedBackups = await Promise.all(
-      backupMovies.map(async (movie) => {
-        if (!movie?.title) return null;
-        try {
-          const details = await searchMovieOnTMDB(movie.title, movie.year);
-          return details ? { ...details, reason: movie.reason } : null;
-        } catch (error) {
-          console.error(`Error fetching details for ${movie.title}:`, error);
-          return null;
-        }
-      })
-    );
-
-    res.json(enrichedBackups.filter(movie => movie !== null));
-  } catch (error) {
-    console.error('Error generating backup recommendations:', error);
-    res.status(500).json({ error: 'Failed to generate backup recommendations' });
-  }
-});
-
-// Helper function to analyze genre preferences from liked movies
 function analyzeGenrePreferences({ likedMovies = [] }) {
   const genreCounts = {};
   
@@ -548,7 +484,9 @@ function analyzeGenrePreferences({ likedMovies = [] }) {
 }
 
 function buildRecommendationPrompt(preferences) {
-  let prompt = "I need a movie recommendation with the following preferences:\n\n";
+  let prompt = preferences.isAlternative 
+    ? "I need another movie recommendation to the very last suggested movie (included below) to me with the following preferences:\n\n"
+    : "I need a movie recommendation with the following preferences:\n\n";
   
   // 1. Include selected genres from session if any
   if (preferences.genres?.length > 0) {
@@ -642,7 +580,7 @@ function buildRecommendationPrompt(preferences) {
 
   // 6. Exclude previously recommended movies
   if (preferences.previouslyRecommended) {
-    prompt += `Do not recommend these previously suggested movies: ${preferences.previouslyRecommended}\n`;
+    prompt += `Do not recommend these movies as user has already been suggested with them previously and he might have watched them: ${preferences.previouslyRecommended}\n`;
   }
   
   // 7. Add specific emphasis on moods and social context
@@ -663,28 +601,26 @@ function buildRecommendationPrompt(preferences) {
     prompt += "Please consider this carefully in your recommendation.\n";
   }
   
-  // 8. Final instructions
   prompt += "\nRecommend ONE movie with clear reasoning. ";
+  
   
   if (preferences.genres?.length > 0) {
     prompt += `The recommendation should be from the selected genres (${preferences.genres.join(', ')}) and `;
-    prompt += "should align with the liked movies and avoid the patterns of disliked movies from these specific genres. ";
+    prompt += "should align with the liked movies and avoid the patterns of disliked movies of chosen genres.";
   } else {
     prompt += "The recommendation should match their preferred genres and avoid movies that match the taste of their disliked movies. ";
   }
   
-  prompt += "If the user has specified moods or social context, ensure the movie is appropriate for that context. ";
+  prompt += "If the user has specified moods or social context, ensure the movie aligns with that context. (In romantic mood, if paird with dark mood and Date context you can suggest R or higher rated movies too if they are romantic).";
+  
   prompt += "Return your response in valid JSON format with these fields: title, year, reason, genre, rating.";
     
   console.log('Generated recommendation prompt:', prompt);
   return prompt;
 }
 
-function buildBackupRecommendationPrompt(preferences) {
-  return buildRecommendationPrompt(preferences) + " Provide 2-3 different alternatives.";
-}
 
-// Search for a movie in our database first
+
 async function findMovieInDatabase(title, year) {
   try {
     let query = { title: new RegExp(title, 'i') }; // Case insensitive search
@@ -726,6 +662,76 @@ async function saveMovieToDatabase(movieData) {
     return null;
   }
 }
+
+// async function searchMovieOnTMDB(title, year) {
+//   try {
+//     // First check our database
+//     const dbMovie = await findMovieInDatabase(title, year);
+//     if (dbMovie) {
+//       console.log(`Found movie in database: ${title}`);
+//       return dbMovie;
+//     }
+
+//     // If not in database, search TMDB
+//     const searchUrl = `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}`;
+//     const response = await axiosInstance.get(searchUrl, {
+//       retry: 3,
+//       retryDelay: 1000,
+//       timeout: 15000
+//     });
+    
+//     if (!response.data.results || response.data.results.length === 0) {
+//       console.log(`No results found for movie: ${title}`);
+//       return null;
+//     }
+    
+//     let movie = response.data.results[0];
+    
+//     // If year provided, try to find exact match
+//     if (year && response.data.results.length > 1) {
+//       const exactMatch = response.data.results.find(m => 
+//         m.release_date && new Date(m.release_date).getFullYear() === parseInt(year)
+//       );
+//       if (exactMatch) movie = exactMatch;
+//     }
+    
+//     if (!movie) return null;
+    
+//     // Get detailed movie info
+//     const detailsUrl = `${TMDB_BASE_URL}/movie/${movie.id}?api_key=${TMDB_API_KEY}&append_to_response=credits`;
+//     const detailsResponse = await axiosInstance.get(detailsUrl, {
+//       retry: 3,
+//       retryDelay: 1000,
+//       timeout: 15000
+//     });
+//     const details = detailsResponse.data;
+    
+//     const movieData = {
+//       tmdbId: details.id,
+//       title: details.title,
+//       overview: details.overview,
+//       releaseDate: details.release_date,
+//       genres: details.genres.map(g => g.name),
+//       rating: details.vote_average,
+//       posterPath: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : null,
+//       backdropPath: details.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}` : null,
+//       runtime: details.runtime,
+//       director: details.credits?.crew?.find(c => c.job === 'Director')?.name,
+//       cast: details.credits?.cast?.slice(0, 5).map(c => c.name) || [],
+//       popularity: details.popularity,
+//       voteCount: details.vote_count
+//       // year is now a virtual field calculated from releaseDate
+//     };
+
+//     // Save to our database for future queries
+//     await saveMovieToDatabase(movieData);
+    
+//     return movieData;
+//   } catch (error) {
+//     console.error('Error searching movie on TMDB:', error);
+//     return null;
+//   }
+// }
 
 async function searchMovieOnTMDB(title, year) {
   try {
@@ -784,7 +790,6 @@ async function searchMovieOnTMDB(title, year) {
       cast: details.credits?.cast?.slice(0, 5).map(c => c.name) || [],
       popularity: details.popularity,
       voteCount: details.vote_count
-      // year is now a virtual field calculated from releaseDate
     };
 
     // Save to our database for future queries
