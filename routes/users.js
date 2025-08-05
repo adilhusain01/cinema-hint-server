@@ -1,11 +1,17 @@
 const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
+const { 
+  cacheUserProfile, 
+  cacheUserPreferences, 
+  cacheRecommendationHistory,
+  invalidateUserCache 
+} = require('../middleware/cache');
 const User = require('../models/User');
 
 const router = express.Router();
 
-// Get user profile with preferences
-router.get('/profile', authMiddleware, async (req, res) => {
+// Get user profile with preferences (cached)
+router.get('/profile', authMiddleware, cacheUserProfile, async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .select('-googleId -__v -createdAt -updatedAt')
@@ -31,8 +37,8 @@ router.get('/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Get recommendation history
-router.get('/history', authMiddleware, async (req, res) => {
+// Get recommendation history (cached)
+router.get('/history', authMiddleware, cacheRecommendationHistory, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -50,8 +56,8 @@ router.get('/history', authMiddleware, async (req, res) => {
   }
 });
 
-// Get user preferences
-router.get('/preferences', authMiddleware, async (req, res) => {
+// Get user preferences (cached)
+router.get('/preferences', authMiddleware, cacheUserPreferences, async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .select('preferences')
@@ -66,8 +72,8 @@ router.get('/preferences', authMiddleware, async (req, res) => {
   }
 });
 
-// Update user preferences
-router.put('/preferences', authMiddleware, async (req, res) => {
+// Update user preferences (invalidates cache)
+router.put('/preferences', authMiddleware, invalidateUserCache, async (req, res) => {
   try {
     const { 
       genres, 

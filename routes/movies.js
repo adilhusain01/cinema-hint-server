@@ -1,6 +1,13 @@
 const express = require('express');
 const OpenAI = require('openai');
 const { authMiddleware, rateLimitMiddleware } = require('../middleware/auth');
+const { 
+  cacheTMDBPopular, 
+  cacheMovieDetails, 
+  redisRateLimit,
+  invalidateUserCache 
+} = require('../middleware/cache');
+const tmdbCacheService = require('../services/tmdbCache');
 const User = require('../models/User');
 const Movie = require('../models/Movie');
 const axiosInstance = require('../utils/axios');
@@ -28,8 +35,8 @@ const tmdbRequest = async (url) => {
   }
 };
 
-// Get curated movies for preference calibration
-router.get('/popular/:genres?', authMiddleware, async (req, res) => {
+// Get curated movies for preference calibration (cached)
+router.get('/popular/:genres?', authMiddleware, cacheTMDBPopular, async (req, res) => {
   try {
     const { genres } = req.params;
     const user = req.user;
@@ -98,8 +105,22 @@ router.get('/popular/:genres?', authMiddleware, async (req, res) => {
       }
     }
 
+    // Use cached TMDB service instead of direct API calls
     let topRatedData, recentData;
     
+    try {
+      // Use genre string for caching
+      const genreString = baseParams.with_genres || 'all';
+      topRatedData = await tmdbCacheService.getPopularMovies(genreString, 1);
+      
+      // Get recent movies (different sort)
+      const recentParams = { ...baseParams, sort_by: 'release_date.desc' };
+      const recentGenreString = recentParams.with_genres || 'all';
+      recentData = await tmdbCacheService.getPopularMovies(`recent-${recentGenreString}`, 1);
+    } catch (error) {
+      console.error('Error fetching from TMDB cache service:', error);
+      // Fallback to original API calls if cache service fails
+    }
     try {
       // Try to get a mix of classic and recent quality movies
       [topRatedData, recentData] = await Promise.all([
@@ -230,7 +251,10 @@ router.post('/preferences', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) => {
+router.post('/recommend', 
+  authMiddleware, 
+  redisRateLimit(parseInt(process.env.DAILY_RECOMMENDATION_LIMIT) || 5), 
+  async (req, res) => {
   try {
     const user = req.user;
     const { genres, moods, socialContext, dealBreakers, isAlternative = false } = req.body;
@@ -404,7 +428,7 @@ async function generateMovieRecommendation(user, preferences) {
   return null; // Could not find a recommendation after max attempts
 }
 
-router.post('/feedback', authMiddleware, async (req, res) => {
+router.post('/feedback', authMiddleware, invalidateUserCache, async (req, res) => {
   try {
     const { movieId, title, accepted, genres = [], rating } = req.body;
     const user = await User.findById(req.user._id);
@@ -800,7 +824,7 @@ router.post('/fetch-tmdb/:tmdbId', authMiddleware, async (req, res) => {
 });
 
 // Get movie details from database
-router.get('/database/:tmdbId', authMiddleware, async (req, res) => {
+router.get('/database/:tmdbId', authMiddleware, cacheMovieDetails, async (req, res) => {
   try {
     const { tmdbId } = req.params;
     const movie = await Movie.findOne({ tmdbId: parseInt(tmdbId) });

@@ -6,6 +6,11 @@ const compression = require('compression');
 const morgan = require('morgan');
 require('dotenv').config();
 
+// Import Redis and cache services
+const redisManager = require('./config/redis');
+const tmdbCacheService = require('./services/tmdbCache');
+const { cacheMonitoring } = require('./middleware/cache');
+
 const authRoutes = require('./routes/auth');
 const movieRoutes = require('./routes/movies');
 const userRoutes = require('./routes/users');
@@ -52,12 +57,44 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Cache monitoring middleware (optional)
+if (process.env.NODE_ENV === 'development') {
+  app.use(cacheMonitoring);
+}
+
+// Initialize Redis connection
+const initializeRedis = async () => {
+  try {
+    await redisManager.connect();
+    console.log('Redis connection initialized');
+    
+    // Preload cache in production
+    if (process.env.NODE_ENV === 'production') {
+      setTimeout(() => {
+        tmdbCacheService.preloadPopularContent().catch(err => 
+          console.error('Cache preloading failed:', err)
+        );
+      }, 5000); // Wait 5 seconds after startup
+    }
+  } catch (error) {
+    console.error('Redis initialization failed:', error);
+    if (process.env.NODE_ENV === 'production') {
+      console.error('Redis is required in production mode');
+      process.exit(1);
+    }
+  }
+};
+
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('Connected to MongoDB'))
+.then(() => {
+  console.log('Connected to MongoDB');
+  // Initialize Redis after MongoDB connection
+  initializeRedis();
+})
 .catch((err) => console.error('MongoDB connection error:', err));
 
 // Routes
@@ -65,9 +102,35 @@ app.use('/api/auth', authRoutes);
 app.use('/api/movies', movieRoutes);
 app.use('/api/users', userRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// Health check with Redis status
+app.get('/api/health', async (req, res) => {
+  try {
+    const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    const redisHealth = await redisManager.healthCheck();
+    
+    const health = {
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      services: {
+        mongodb: mongoStatus,
+        redis: redisHealth,
+        environment: process.env.NODE_ENV || 'development'
+      }
+    };
+
+    // Add cache statistics in development
+    if (process.env.NODE_ENV === 'development') {
+      health.cache = await tmdbCacheService.getCacheStats();
+    }
+
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    });
+  }
 });
 
 // Error handling middleware
