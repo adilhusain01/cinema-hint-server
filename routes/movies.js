@@ -413,13 +413,13 @@ router.post('/feedback', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // First, ensure the movie exists in our database
+    // First, ensure the movie exists in our database with complete data
     let movieInDb = await Movie.findOne({ tmdbId: movieId });
     
     if (!movieInDb) {
-      // If movie doesn't exist in database, fetch from TMDB and save it
+      // If movie doesn't exist in database, fetch from TMDB using the movieId
       try {
-        const movieDetails = await searchMovieOnTMDB(title, null);
+        const movieDetails = await searchMovieOnTMDB(null, null, movieId);
         if (movieDetails) {
           movieInDb = movieDetails;
         }
@@ -428,13 +428,25 @@ router.post('/feedback', authMiddleware, async (req, res) => {
       }
     }
 
+    // If we still don't have the movie, try searching by title as fallback
+    if (!movieInDb) {
+      try {
+        const movieDetails = await searchMovieOnTMDB(title, null);
+        if (movieDetails) {
+          movieInDb = movieDetails;
+        }
+      } catch (error) {
+        console.error('Error fetching movie by title from TMDB:', error);
+      }
+    }
+
     // Prepare comprehensive movie data 
     const movieData = { 
       tmdbId: movieId, 
-      title,
-      genres: Array.isArray(genres) ? genres : [genres], // Ensure genres is an array
-      rating: rating || (accepted ? 5 : 1),
-      // Include additional data from database if available
+      title: movieInDb?.title || title,
+      genres: movieInDb?.genres || (Array.isArray(genres) ? genres : [genres]), // Use TMDB genres if available
+      rating: movieInDb?.rating || rating || (accepted ? 5 : 1),
+      // Include complete data from TMDB
       posterPath: movieInDb?.posterPath,
       backdropPath: movieInDb?.backdropPath,
       overview: movieInDb?.overview,
@@ -710,6 +722,13 @@ async function findMovieInDatabase(title, year) {
 // Save movie to our database
 async function saveMovieToDatabase(movieData) {
   try {
+    // Check if movie already exists to prevent duplicates
+    const existingMovie = await Movie.findOne({ tmdbId: movieData.tmdbId });
+    if (existingMovie) {
+      console.log(`Movie already exists in database: ${movieData.title} (ID: ${movieData.tmdbId})`);
+      return existingMovie;
+    }
+
     const movie = new Movie({
       tmdbId: movieData.tmdbId,
       title: movieData.title,
@@ -726,6 +745,7 @@ async function saveMovieToDatabase(movieData) {
       voteCount: movieData.voteCount || 0
     });
     await movie.save();
+    console.log(`Saved new movie to database: ${movieData.title} (ID: ${movieData.tmdbId})`);
     return movie;
   } catch (error) {
     console.error('Error saving movie to database:', error);
@@ -733,8 +753,8 @@ async function saveMovieToDatabase(movieData) {
   }
 }
 
-// Get all movies from database for gallery (public route, but requires auth for watchlist features)
-router.get('/gallery', authMiddleware, async (req, res) => {
+// Get all movies from database for gallery (public route)
+router.get('/gallery', async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);

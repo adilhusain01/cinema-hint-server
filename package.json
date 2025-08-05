@@ -1,7 +1,11 @@
 {
-  "name": "zero-effort-movie-picker-backend",
+  "name": "cinemahint-server",
   "version": "1.0.0",
-  "description": "Backend for Zero-Effort Movie Picker",
+  "description": "Backend API for CinemaHint - AI-powered movie recommendations",
+  "keywords": ["movie", "recommendations", "AI", "backend", "API"],
+  "author": "CinemaHint",
+  "license": "MIT",
+  "homepage": "https://cinemahint.com",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

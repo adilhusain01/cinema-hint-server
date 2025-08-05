@@ -7,10 +7,25 @@ const router = express.Router();
 
 router.post('/google', async (req, res) => {
   try {
-    const { token } = req.body;
+    console.log('Google auth request received');
+    console.log('Request body keys:', Object.keys(req.body || {}));
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
+    const { token, credential } = req.body;
+    console.log('Extracted token:', token ? 'Present' : 'Missing');
+    console.log('Extracted credential:', credential ? 'Present' : 'Missing');
+    
+    const idToken = token || credential; // Handle both formats
+    
+    if (!idToken) {
+      console.error('No token found in request body:', req.body);
+      return res.status(400).json({ error: 'No token provided' });
+    }
+    
+    console.log('Using token for verification:', idToken.substring(0, 50) + '...');
     
     const ticket = await client.verifyIdToken({
-      idToken: token,
+      idToken: idToken,
       audience: process.env.GOOGLE_CLIENT_ID
     });
     
@@ -26,10 +41,8 @@ router.post('/google', async (req, res) => {
         name,
         profilePicture: picture,
         preferences: {
-          genres: [],
-          likedMovies: [],
-          dislikedMovies: [],
-          dealBreakers: []
+          likedMovies: new Map(),
+          dislikedMovies: new Map()
         }
       });
       await user.save();
@@ -52,7 +65,15 @@ router.post('/google', async (req, res) => {
     });
   } catch (error) {
     console.error('Google auth error:', error);
-    res.status(401).json({ error: 'Invalid Google token' });
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      requestBody: req.body
+    });
+    res.status(401).json({ 
+      error: 'Invalid Google token',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
