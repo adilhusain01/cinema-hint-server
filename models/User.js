@@ -7,6 +7,12 @@ const createGenreMapSchema = () => ({
     tmdbId: { type: Number, required: true },
     title: { type: String, required: true },
     genres: { type: [String], default: [] },
+    posterPath: String,
+    backdropPath: String,
+    rating: Number,
+    year: Number,
+    overview: String,
+    releaseDate: String,
     _id: false
   }],
   default: {}
@@ -43,6 +49,16 @@ const userSchema = new mongoose.Schema({
     title: String,
     accepted: Boolean,
     timestamp: { type: Date, default: Date.now }
+  }],
+  watchlist: [{
+    tmdbId: { type: Number, required: true },
+    title: { type: String, required: true },
+    genres: { type: [String], default: [] },
+    posterPath: String,
+    rating: Number,
+    year: Number,
+    addedAt: { type: Date, default: Date.now },
+    _id: false
   }]
 }, {
   timestamps: true
@@ -113,7 +129,13 @@ userSchema.methods.addLikedMovie = function(movie) {
   const movieData = {
     tmdbId: movie.tmdbId,
     title: movie.title,
-    genres: genreNames // Store genre names instead of IDs
+    genres: genreNames, // Store genre names instead of IDs
+    posterPath: movie.posterPath,
+    backdropPath: movie.backdropPath,
+    rating: movie.rating || movie.voteAverage,
+    year: movie.year || (movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null),
+    overview: movie.overview,
+    releaseDate: movie.releaseDate
   };
   
   // Add to each genre
@@ -178,7 +200,13 @@ userSchema.methods.addDislikedMovie = function(movie) {
   const movieData = {
     tmdbId: movie.tmdbId,
     title: movie.title,
-    genres: genreNames // Store genre names instead of IDs
+    genres: genreNames, // Store genre names instead of IDs
+    posterPath: movie.posterPath,
+    backdropPath: movie.backdropPath,
+    rating: movie.rating || movie.voteAverage,
+    year: movie.year || (movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null),
+    overview: movie.overview,
+    releaseDate: movie.releaseDate
   };
   
   // Add to each genre
@@ -246,6 +274,37 @@ userSchema.methods.checkDailyLimit = function() {
   }
   
   return this.dailyRecommendations.count < 5; // 5 recommendations per day
+};
+
+// Add movie to watchlist
+userSchema.methods.addToWatchlist = function(movie) {
+  // Check if movie already exists in watchlist
+  const existingIndex = this.watchlist.findIndex(m => m.tmdbId === movie.tmdbId);
+  
+  if (existingIndex === -1) {
+    this.watchlist.push({
+      tmdbId: movie.tmdbId,
+      title: movie.title,
+      genres: movie.genres || [],
+      posterPath: movie.posterPath,
+      rating: movie.rating,
+      year: movie.year,
+      addedAt: new Date()
+    });
+    return this.save();
+  }
+  return Promise.resolve(this);
+};
+
+// Remove movie from watchlist
+userSchema.methods.removeFromWatchlist = function(tmdbId) {
+  this.watchlist = this.watchlist.filter(m => m.tmdbId !== tmdbId);
+  return this.save();
+};
+
+// Check if movie is in watchlist
+userSchema.methods.isInWatchlist = function(tmdbId) {
+  return this.watchlist.some(m => m.tmdbId === tmdbId);
 };
 
 module.exports = mongoose.model('User', userSchema);

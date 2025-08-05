@@ -277,6 +277,7 @@ router.post('/recommend', authMiddleware, rateLimitMiddleware, async (req, res) 
       socialContext,
       dealBreakers,
       previouslyRecommended: user.recommendationHistory.map(rec => rec.title).join(', ') || '',
+      recommendationHistory: user.recommendationHistory || [],
       isAlternative
     };
     
@@ -412,12 +413,33 @@ router.post('/feedback', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Prepare movie data with genres if available
+    // First, ensure the movie exists in our database
+    let movieInDb = await Movie.findOne({ tmdbId: movieId });
+    
+    if (!movieInDb) {
+      // If movie doesn't exist in database, fetch from TMDB and save it
+      try {
+        const movieDetails = await searchMovieOnTMDB(title, null);
+        if (movieDetails) {
+          movieInDb = movieDetails;
+        }
+      } catch (error) {
+        console.error('Error fetching movie from TMDB:', error);
+      }
+    }
+
+    // Prepare comprehensive movie data 
     const movieData = { 
       tmdbId: movieId, 
       title,
       genres: Array.isArray(genres) ? genres : [genres], // Ensure genres is an array
-      rating: rating || (accepted ? 5 : 1)
+      rating: rating || (accepted ? 5 : 1),
+      // Include additional data from database if available
+      posterPath: movieInDb?.posterPath,
+      backdropPath: movieInDb?.backdropPath,
+      overview: movieInDb?.overview,
+      releaseDate: movieInDb?.releaseDate,
+      year: movieInDb?.releaseDate ? new Date(movieInDb.releaseDate).getFullYear() : null
     };
 
     // Update liked/disliked movies
@@ -427,14 +449,26 @@ router.post('/feedback', authMiddleware, async (req, res) => {
       await user.addDislikedMovie(movieData);
     }
 
-    // Add to recommendation history
-    await user.addRecommendation({
-      movieId,
-      title,
-      reason: 'User feedback',
-      accepted,
-      timestamp: new Date()
-    });
+    // Update recommendation history with feedback
+    const existingRecommendation = user.recommendationHistory.find(
+      rec => rec.movieId === movieId
+    );
+    
+    if (existingRecommendation) {
+      // Update existing recommendation with feedback
+      existingRecommendation.accepted = accepted;
+    } else {
+      // Add new recommendation to history if not found
+      user.recommendationHistory.push({
+        movieId,
+        title,
+        accepted,
+        timestamp: new Date()
+      });
+    }
+    
+    // Save the user document
+    await user.save();
 
     // Get updated user with preferences (only liked/disliked movies)
     const updatedUser = await User.findById(user._id)
@@ -578,9 +612,32 @@ function buildRecommendationPrompt(preferences) {
     prompt += `Avoid: ${preferences.dealBreakers.join(', ')}\n`;
   }
 
-  // 6. Exclude previously recommended movies
-  if (preferences.previouslyRecommended) {
-    prompt += `Do not recommend these movies as user has already been suggested with them previously and he might have watched them: ${preferences.previouslyRecommended}\n`;
+  // 6. Include user's acceptance patterns from recommendation history
+  if (preferences.recommendationHistory && preferences.recommendationHistory.length > 0) {
+    const acceptedMovies = preferences.recommendationHistory
+      .filter(rec => rec.accepted === true)
+      .map(rec => rec.title);
+    const rejectedMovies = preferences.recommendationHistory
+      .filter(rec => rec.accepted === false)
+      .map(rec => rec.title);
+    
+    if (acceptedMovies.length > 0) {
+      prompt += `User previously accepted these recommended movies: ${acceptedMovies.join(', ')}\n`;
+    }
+    
+    if (rejectedMovies.length > 0) {
+      prompt += `User previously rejected these recommended movies: ${rejectedMovies.join(', ')}\n`;
+    }
+    
+    // Exclude all previously recommended movies (both accepted and rejected)
+    const allPreviouslyRecommended = preferences.recommendationHistory
+      .map(rec => rec.title)
+      .join(', ');
+    if (allPreviouslyRecommended) {
+      prompt += `Do not recommend these movies as user has already been suggested with them previously: ${allPreviouslyRecommended}\n`;
+    }
+  } else if (preferences.previouslyRecommended) {
+    prompt += `Do not recommend these movies as user has already been suggested with them previously: ${preferences.previouslyRecommended}\n`;
   }
   
   // 7. Add specific emphasis on moods and social context
@@ -603,6 +660,19 @@ function buildRecommendationPrompt(preferences) {
   
   prompt += "\nRecommend ONE movie with clear reasoning. ";
   
+  // Add guidance about acceptance patterns
+  if (preferences.recommendationHistory && preferences.recommendationHistory.length > 0) {
+    const acceptedCount = preferences.recommendationHistory.filter(rec => rec.accepted === true).length;
+    const rejectedCount = preferences.recommendationHistory.filter(rec => rec.accepted === false).length;
+    
+    if (acceptedCount > 0 && rejectedCount > 0) {
+      prompt += "Consider the user's previous acceptance and rejection patterns when making your recommendation. ";
+    } else if (acceptedCount > 0) {
+      prompt += "Consider the user's previously accepted recommendations to understand their taste better. ";
+    } else if (rejectedCount > 0) {
+      prompt += "Consider the user's previously rejected recommendations to avoid similar patterns. ";
+    }
+  }
   
   if (preferences.genres?.length > 0) {
     prompt += `The recommendation should be from the selected genres (${preferences.genres.join(', ')}) and `;
@@ -663,78 +733,112 @@ async function saveMovieToDatabase(movieData) {
   }
 }
 
-// async function searchMovieOnTMDB(title, year) {
-//   try {
-//     // First check our database
-//     const dbMovie = await findMovieInDatabase(title, year);
-//     if (dbMovie) {
-//       console.log(`Found movie in database: ${title}`);
-//       return dbMovie;
-//     }
-
-//     // If not in database, search TMDB
-//     const searchUrl = `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}`;
-//     const response = await axiosInstance.get(searchUrl, {
-//       retry: 3,
-//       retryDelay: 1000,
-//       timeout: 15000
-//     });
-    
-//     if (!response.data.results || response.data.results.length === 0) {
-//       console.log(`No results found for movie: ${title}`);
-//       return null;
-//     }
-    
-//     let movie = response.data.results[0];
-    
-//     // If year provided, try to find exact match
-//     if (year && response.data.results.length > 1) {
-//       const exactMatch = response.data.results.find(m => 
-//         m.release_date && new Date(m.release_date).getFullYear() === parseInt(year)
-//       );
-//       if (exactMatch) movie = exactMatch;
-//     }
-    
-//     if (!movie) return null;
-    
-//     // Get detailed movie info
-//     const detailsUrl = `${TMDB_BASE_URL}/movie/${movie.id}?api_key=${TMDB_API_KEY}&append_to_response=credits`;
-//     const detailsResponse = await axiosInstance.get(detailsUrl, {
-//       retry: 3,
-//       retryDelay: 1000,
-//       timeout: 15000
-//     });
-//     const details = detailsResponse.data;
-    
-//     const movieData = {
-//       tmdbId: details.id,
-//       title: details.title,
-//       overview: details.overview,
-//       releaseDate: details.release_date,
-//       genres: details.genres.map(g => g.name),
-//       rating: details.vote_average,
-//       posterPath: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : null,
-//       backdropPath: details.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}` : null,
-//       runtime: details.runtime,
-//       director: details.credits?.crew?.find(c => c.job === 'Director')?.name,
-//       cast: details.credits?.cast?.slice(0, 5).map(c => c.name) || [],
-//       popularity: details.popularity,
-//       voteCount: details.vote_count
-//       // year is now a virtual field calculated from releaseDate
-//     };
-
-//     // Save to our database for future queries
-//     await saveMovieToDatabase(movieData);
-    
-//     return movieData;
-//   } catch (error) {
-//     console.error('Error searching movie on TMDB:', error);
-//     return null;
-//   }
-// }
-
-async function searchMovieOnTMDB(title, year) {
+// Get all movies from database for gallery (public route, but requires auth for watchlist features)
+router.get('/gallery', authMiddleware, async (req, res) => {
   try {
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const movies = await Movie.find({})
+      .sort({ createdAt: -1 }) // Latest searched first
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select('tmdbId title overview releaseDate genres rating posterPath backdropPath runtime director cast createdAt')
+      .lean();
+    
+    res.json(movies);
+  } catch (error) {
+    console.error('Error fetching movies for gallery:', error);
+    res.status(500).json({ error: 'Failed to fetch movies for gallery' });
+  }
+});
+
+// Fetch movie from TMDB and save to database
+router.post('/fetch-tmdb/:tmdbId', authMiddleware, async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    
+    // Check if movie already exists in database
+    let movie = await Movie.findOne({ tmdbId: parseInt(tmdbId) });
+    
+    if (movie) {
+      return res.json(movie);
+    }
+    
+    // Fetch from TMDB using the existing function
+    const movieDetails = await searchMovieOnTMDB(null, null, parseInt(tmdbId));
+    
+    if (!movieDetails) {
+      return res.status(404).json({ error: 'Movie not found on TMDB' });
+    }
+    
+    res.json(movieDetails);
+  } catch (error) {
+    console.error('Error fetching movie from TMDB:', error);
+    res.status(500).json({ error: 'Failed to fetch movie from TMDB' });
+  }
+});
+
+// Get movie details from database
+router.get('/database/:tmdbId', authMiddleware, async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    const movie = await Movie.findOne({ tmdbId: parseInt(tmdbId) });
+    
+    if (!movie) {
+      return res.status(404).json({ error: 'Movie not found in database' });
+    }
+    
+    res.json(movie);
+  } catch (error) {
+    console.error('Error fetching movie from database:', error);
+    res.status(500).json({ error: 'Failed to fetch movie from database' });
+  }
+});
+
+async function searchMovieOnTMDB(title, year, tmdbId = null) {
+  try {
+    // If we have a direct TMDB ID, use it directly
+    if (tmdbId) {
+      // Check our database first
+      const dbMovie = await Movie.findOne({ tmdbId: parseInt(tmdbId) });
+      if (dbMovie) {
+        console.log(`Found movie in database by ID: ${tmdbId}`);
+        return dbMovie;
+      }
+      
+      // Fetch directly by TMDB ID
+      const detailsUrl = `${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=credits`;
+      const detailsResponse = await axiosInstance.get(detailsUrl, {
+        retry: 3,
+        retryDelay: 1000,
+        timeout: 15000
+      });
+      const details = detailsResponse.data;
+      
+      const movieData = {
+        tmdbId: details.id,
+        title: details.title,
+        overview: details.overview,
+        releaseDate: details.release_date,
+        genres: details.genres.map(g => g.name),
+        rating: details.vote_average,
+        posterPath: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : null,
+        backdropPath: details.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}` : null,
+        runtime: details.runtime,
+        director: details.credits?.crew?.find(c => c.job === 'Director')?.name,
+        cast: details.credits?.cast?.slice(0, 5).map(c => c.name) || [],
+        popularity: details.popularity,
+        voteCount: details.vote_count
+      };
+
+      // Save to our database for future queries
+      await saveMovieToDatabase(movieData);
+      
+      return movieData;
+    }
+
+    // Original logic for search by title
     // First check our database
     const dbMovie = await findMovieInDatabase(title, year);
     if (dbMovie) {

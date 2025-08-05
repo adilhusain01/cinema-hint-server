@@ -185,4 +185,142 @@ router.delete('/preferences/:field', authMiddleware, async (req, res) => {
   }
 });
 
+// Get user's watchlist
+router.get('/watchlist', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .select('watchlist')
+      .lean();
+    
+    res.json(user.watchlist || []);
+  } catch (error) {
+    console.error('Error fetching watchlist:', error);
+    res.status(500).json({ error: 'Failed to fetch watchlist' });
+  }
+});
+
+// Add movie to watchlist
+router.post('/watchlist', authMiddleware, async (req, res) => {
+  try {
+    const { tmdbId, title, genres, posterPath, rating, year } = req.body;
+    
+    if (!tmdbId || !title) {
+      return res.status(400).json({ error: 'Movie ID and title are required' });
+    }
+    
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    await user.addToWatchlist({
+      tmdbId,
+      title,
+      genres: genres || [],
+      posterPath,
+      rating,
+      year
+    });
+    
+    res.json({ success: true, message: 'Movie added to watchlist' });
+  } catch (error) {
+    console.error('Error adding to watchlist:', error);
+    res.status(500).json({ error: 'Failed to add movie to watchlist' });
+  }
+});
+
+// Remove movie from watchlist
+router.delete('/watchlist/:tmdbId', authMiddleware, async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    await user.removeFromWatchlist(parseInt(tmdbId));
+    
+    res.json({ success: true, message: 'Movie removed from watchlist' });
+  } catch (error) {
+    console.error('Error removing from watchlist:', error);
+    res.status(500).json({ error: 'Failed to remove movie from watchlist' });
+  }
+});
+
+// Check if movie is in watchlist
+router.get('/watchlist/check/:tmdbId', authMiddleware, async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const isInWatchlist = user.isInWatchlist(parseInt(tmdbId));
+    
+    res.json({ isInWatchlist });
+  } catch (error) {
+    console.error('Error checking watchlist:', error);
+    res.status(500).json({ error: 'Failed to check watchlist' });
+  }
+});
+
+// Remove movie from liked movies
+router.delete('/preferences/liked/:tmdbId', authMiddleware, async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    const user = await User.findById(req.user._id);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Remove movie from all genres in liked movies
+    for (const [genreName, movies] of user.preferences.likedMovies.entries()) {
+      const filteredMovies = movies.filter(m => m.tmdbId !== parseInt(tmdbId));
+      if (filteredMovies.length === 0) {
+        user.preferences.likedMovies.delete(genreName);
+      } else {
+        user.preferences.likedMovies.set(genreName, filteredMovies);
+      }
+    }
+    
+    await user.save();
+    res.json({ success: true, message: 'Movie removed from liked movies' });
+  } catch (error) {
+    console.error('Error removing from liked movies:', error);
+    res.status(500).json({ error: 'Failed to remove movie from liked movies' });
+  }
+});
+
+// Remove movie from disliked movies
+router.delete('/preferences/disliked/:tmdbId', authMiddleware, async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    const user = await User.findById(req.user._id);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Remove movie from all genres in disliked movies
+    for (const [genreName, movies] of user.preferences.dislikedMovies.entries()) {
+      const filteredMovies = movies.filter(m => m.tmdbId !== parseInt(tmdbId));
+      if (filteredMovies.length === 0) {
+        user.preferences.dislikedMovies.delete(genreName);
+      } else {
+        user.preferences.dislikedMovies.set(genreName, filteredMovies);
+      }
+    }
+    
+    await user.save();
+    res.json({ success: true, message: 'Movie removed from disliked movies' });
+  } catch (error) {
+    console.error('Error removing from disliked movies:', error);
+    res.status(500).json({ error: 'Failed to remove movie from disliked movies' });
+  }
+});
+
 module.exports = router;
