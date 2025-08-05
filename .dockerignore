@@ -60,8 +60,8 @@ coverage
 .nyc_output
 
 # Docker files (for multi-stage builds)
-Dockerfile*
-docker-compose*.yml
+#Dockerfile*
+#docker-compose*.yml
 
 # Development and testing
 .docker
