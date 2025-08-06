@@ -23,28 +23,28 @@ services:
     environment:
       - REDIS_REPLICATION_MODE=master
 
-  # MongoDB Service (for local development)
-  mongodb:
-    image: mongo:6.0
-    container_name: cinemahint-mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-      - ./mongo-init:/docker-entrypoint-initdb.d
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
-      MONGO_INITDB_DATABASE: cinemahint
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 40s
-    networks:
-      - cinemahint-network
+  # MongoDB Atlas - External Service (no container needed)
+  # mongodb:
+  #   image: mongo:6.0
+  #   container_name: cinemahint-mongodb
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #     - ./mongo-init:/docker-entrypoint-initdb.d
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: admin
+  #     MONGO_INITDB_ROOT_PASSWORD: password123
+  #     MONGO_INITDB_DATABASE: cinemahint
+  #   healthcheck:
+  #     test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 40s
+  #   networks:
+  #     - cinemahint-network
 
   # Main Application Service
   app:
@@ -59,15 +59,16 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      mongodb:
-        condition: service_healthy
+      # MongoDB Atlas - external service, no dependency needed
+      # mongodb:
+      #   condition: service_healthy
     environment:
       # Application Configuration
       - NODE_ENV=production
       - PORT=5000
       
-      # Database Configuration
-      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/cinemahint?authSource=admin
+      # Database Configuration (use .env for MongoDB Atlas)
+      - MONGODB_URI=${MONGODB_URI}
       - REDIS_URL=redis://redis:6379
       
       # External APIs (set these in production)
@@ -80,8 +81,8 @@ services:
       - JWT_SECRET=${JWT_SECRET:-your-super-secure-jwt-secret-key-min-32-chars}
       
       # CORS Configuration (for Vercel deployment)
-      - FRONTEND_URL=${FRONTEND_URL:-https://your-vercel-app.vercel.app}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://your-vercel-app.vercel.app}
+      - FRONTEND_URL=${FRONTEND_URL:-https://cinemahint.vercel.app}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://cinemahint.vercel.app}
       
       # Rate Limiting
       - DAILY_RECOMMENDATION_LIMIT=${DAILY_RECOMMENDATION_LIMIT:-10}
