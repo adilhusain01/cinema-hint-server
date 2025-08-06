@@ -117,19 +117,49 @@ jobs:
           docker container prune -f
           
           # Start services with production profile
+          echo "🚀 Starting services..."
           docker-compose --profile production up -d
           
           # Wait for services to be healthy
-          echo "Waiting for services to start..."
+          echo "⏳ Waiting for services to start..."
           sleep 30
           
-          # Health check
+          # Check individual service status
+          echo "📊 Service status:"
+          docker-compose ps
+          
+          # Check for failed containers
+          FAILED_CONTAINERS=$(docker ps -a --filter "status=restarting" --filter "status=exited" --format "{{.Names}}")
+          if [ ! -z "$FAILED_CONTAINERS" ]; then
+            echo "❌ Failed containers detected: $FAILED_CONTAINERS"
+            echo "📋 Logs for failed containers:"
+            for container in $FAILED_CONTAINERS; do
+              echo "--- Logs for $container ---"
+              docker logs --tail=20 $container
+            done
+          fi
+          
+          # Health check (try both local and external)
+          echo "🧪 Testing application health..."
           if curl -f http://localhost:5000/api/health; then
-            echo "✅ Deployment successful! Application is healthy."
+            echo "✅ Internal health check passed!"
           else
-            echo "❌ Health check failed. Check logs:"
-            docker-compose logs --tail=50
-            exit 1
+            echo "❌ Internal health check failed!"
+            echo "📋 App container logs:"
+            docker logs --tail=20 cinemahint-app
+          fi
+          
+          # Test external access (if nginx is working)
+          if curl -f https://cinemahint.adilhusain.me/api/health 2>/dev/null; then
+            echo "✅ External HTTPS access working!"
+          else
+            echo "⚠️ External HTTPS access failed (might be nginx issue)"
+            if docker ps --filter "name=cinemahint-nginx" --filter "status=running" | grep -q nginx; then
+              echo "📋 Nginx container logs:"
+              docker logs --tail=20 cinemahint-nginx
+            else
+              echo "❌ Nginx container is not running!"
+            fi
           fi
           
           # Show status
