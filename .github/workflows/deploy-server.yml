@@ -28,6 +28,11 @@ jobs:
       run: |
         docker build -t cinemahint:latest .
         
+    - name: Debug SSH Connection
+      run: |
+        echo "Testing SSH connection to ${{ secrets.EC2_HOST }}"
+        echo "Using username: ${{ secrets.EC2_USERNAME }}"
+        
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v1.0.3
       with:
@@ -35,6 +40,7 @@ jobs:
         username: ${{ secrets.EC2_USERNAME }}
         key: ${{ secrets.EC2_SSH_KEY }}
         port: ${{ secrets.EC2_SSH_PORT || 22 }}
+        debug: true
         script: |
           # Navigate to deployment directory
           cd /home/${{ secrets.EC2_USERNAME }}/cinema-hint-server
