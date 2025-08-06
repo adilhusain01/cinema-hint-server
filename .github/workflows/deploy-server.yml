@@ -88,6 +88,10 @@ jobs:
           echo "nginx/ssl/" >> .gitignore
           echo "*.log" >> .gitignore
           
+          # Remove any problematic config files that should be deleted
+          echo "🧹 Cleaning up deleted config files..."
+          rm -f nginx/conf.d/scale.conf nginx/conf.d/locations.conf
+          
           echo "📥 Pulling latest code..."
           git pull origin main || {
             echo "❌ Git pull failed!"
