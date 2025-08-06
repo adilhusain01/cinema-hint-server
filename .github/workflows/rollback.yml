@@ -1,0 +1,86 @@
+name: Emergency Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_commit:
+        description: 'Commit SHA or tag to rollback to'
+        required: true
+        default: 'HEAD~1'
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        default: 'Emergency rollback due to production issue'
+
+jobs:
+  rollback:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Confirm Rollback
+      run: |
+        echo "🚨 EMERGENCY ROLLBACK INITIATED"
+        echo "Target: ${{ github.event.inputs.target_commit }}"
+        echo "Reason: ${{ github.event.inputs.reason }}"
+        echo "Initiated by: ${{ github.actor }}"
+        
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for rollback
+        
+    - name: Execute Rollback
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_SSH_PORT || 22 }}
+        script: |
+          cd /home/${{ secrets.EC2_USERNAME }}/cinemahint-server
+          
+          echo "🚨 Starting emergency rollback..."
+          echo "Current commit: $(git rev-parse HEAD)"
+          echo "Target commit: ${{ github.event.inputs.target_commit }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+          
+          # Create emergency backup
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          mkdir -p rollbacks/emergency
+          docker-compose logs > rollbacks/emergency/before_rollback_$timestamp.log
+          git rev-parse HEAD > rollbacks/emergency/rollback_from_$timestamp.txt
+          
+          # Stop services
+          docker-compose down
+          
+          # Rollback to target commit
+          git stash push -m "Emergency stash before rollback $timestamp"
+          
+          if git checkout ${{ github.event.inputs.target_commit }}; then
+            echo "✅ Successfully checked out ${{ github.event.inputs.target_commit }}"
+          else
+            echo "❌ Failed to checkout ${{ github.event.inputs.target_commit }}"
+            exit 1
+          fi
+          
+          # Rebuild and restart
+          docker-compose build app
+          docker-compose --profile production up -d
+          
+          # Wait and verify
+          echo "⏳ Waiting for services to stabilize..."
+          sleep 45
+          
+          # Health check
+          if curl -f https://cinemahint.adilhusain.me/api/health; then
+            echo "✅ Rollback successful! Application is healthy."
+            echo "📝 Rollback details saved to: rollbacks/emergency/"
+          else
+            echo "❌ Rollback failed - application unhealthy"
+            docker-compose logs --tail=50
+            exit 1
+          fi
+          
+          # Log rollback event
+          echo "$(date): Emergency rollback to ${{ github.event.inputs.target_commit }} - ${{ github.event.inputs.reason }}" >> rollbacks/rollback_history.log
