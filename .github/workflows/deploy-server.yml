@@ -42,11 +42,64 @@ jobs:
         port: ${{ secrets.EC2_SSH_PORT || 22 }}
         debug: true
         script: |
+          set -e  # Exit on any error
+          
+          echo "🏠 Current directory: $(pwd)"
+          echo "👤 Current user: $(whoami)"
+          
+          # Check if deployment directory exists
+          echo "🔍 Checking deployment directory..."
+          if [ ! -d "/home/${{ secrets.EC2_USERNAME }}/cinema-hint-server" ]; then
+            echo "❌ Directory /home/${{ secrets.EC2_USERNAME }}/cinema-hint-server does not exist!"
+            echo "📁 Available directories in /home/${{ secrets.EC2_USERNAME }}:"
+            ls -la /home/${{ secrets.EC2_USERNAME }}/
+            exit 1
+          fi
+          
           # Navigate to deployment directory
+          echo "📂 Navigating to deployment directory..."
           cd /home/${{ secrets.EC2_USERNAME }}/cinema-hint-server
           
-          # Pull latest code
-          git pull origin main
+          echo "📍 Now in: $(pwd)"
+          echo "📋 Directory contents:"
+          ls -la
+          
+          # Check if it's a git repository
+          if [ ! -d ".git" ]; then
+            echo "❌ This is not a git repository!"
+            exit 1
+          fi
+          
+          echo "🔗 Git remote configuration:"
+          git remote -v
+          
+          echo "🔄 Current git status:"
+          git status
+          
+          # Check if there are local changes
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "⚠️ Local changes detected, stashing them..."
+            git stash push -m "Auto-stash before deployment $(date)"
+          fi
+          
+          # Add untracked files that might interfere
+          echo "📦 Adding untracked files to .gitignore if needed..."
+          echo "backups/" >> .gitignore
+          echo "nginx/ssl/" >> .gitignore
+          echo "*.log" >> .gitignore
+          
+          echo "📥 Pulling latest code..."
+          git pull origin main || {
+            echo "❌ Git pull failed!"
+            echo "🔍 Git status after failed pull:"
+            git status
+            echo "🔍 Git log to see what's happening:"
+            git log --oneline -5
+            exit 1
+          }
+          
+          echo "✅ Latest commits after pull:"
+          git log --oneline -3
           
           # Create backup of current deployment
           timestamp=$(date +%Y%m%d_%H%M%S)
