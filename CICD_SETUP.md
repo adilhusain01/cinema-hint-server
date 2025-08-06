@@ -79,7 +79,7 @@ Ensure your EC2 instance has this directory structure:
 ssh ubuntu@cinemahint.adilhusain.me
 
 # Navigate to server directory (adjust path as needed)
-cd /home/ubuntu/cinemahint-server
+cd /home/ubuntu/cinema-hint-server
 
 # Or if it's in a different location:
 # cd /home/ubuntu/MovieRecommendor/server
@@ -96,7 +96,7 @@ docker-compose ps
 Your server repository should maintain this structure:
 
 ```
-cinemahint-server/
+cinema-hint-server/
 ├── .github/
 │   └── workflows/
 │       ├── deploy-server.yml
@@ -155,7 +155,7 @@ cinemahint-server/
 ssh ubuntu@cinemahint.adilhusain.me
 
 # Navigate to server directory
-cd /home/ubuntu/cinemahint-server
+cd /home/ubuntu/cinema-hint-server
 
 # Check service status
 docker-compose ps
@@ -225,7 +225,7 @@ GitHub Actions
     ↓ 
 SSH to EC2 
     ↓ 
-/home/ubuntu/cinemahint-server 
+/home/ubuntu/cinema-hint-server 
     ↓ 
 Docker Compose 
     ↓ 

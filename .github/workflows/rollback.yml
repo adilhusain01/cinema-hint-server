@@ -38,7 +38,7 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         port: ${{ secrets.EC2_SSH_PORT || 22 }}
         script: |
-          cd /home/${{ secrets.EC2_USERNAME }}/cinemahint-server
+          cd /home/${{ secrets.EC2_USERNAME }}/cinema-hint-server
           
           echo "🚨 Starting emergency rollback..."
           echo "Current commit: $(git rev-parse HEAD)"

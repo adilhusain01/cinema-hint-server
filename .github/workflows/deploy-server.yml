@@ -37,7 +37,7 @@ jobs:
         port: ${{ secrets.EC2_SSH_PORT || 22 }}
         script: |
           # Navigate to deployment directory
-          cd /home/${{ secrets.EC2_USERNAME }}/cinemahint-server
+          cd /home/${{ secrets.EC2_USERNAME }}/cinema-hint-server
           
           # Pull latest code
           git pull origin main
@@ -88,7 +88,7 @@ jobs:
           echo "🔍 Running deployment verification..."
           
           # Check if all services are running
-          cd /home/${{ secrets.EC2_USERNAME }}/cinemahint-server
+          cd /home/${{ secrets.EC2_USERNAME }}/cinema-hint-server
           
           if docker-compose ps | grep -q "Up.*healthy"; then
             echo "✅ All services are healthy"
