@@ -1,76 +1,69 @@
 # Dependencies
-node_modules
-*/node_modules
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
 # Environment files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 
-# Build outputs
-client/dist
-client/build
-server/dist
-
-# Development files
-.git
+# Git
+.git/
 .gitignore
+
+# Documentation  
 *.md
 README.md
-CHANGELOG.md
+DEPLOYMENT.md
 
-# IDE and editor files
-.vscode
-.idea
+# IDE files
+.vscode/
+.idea/
 *.swp
 *.swo
-*~
 
-# OS generated files
+# OS files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # Logs
-logs
+logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-coverage
+app.log
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
+# Development/Testing
+test/
+tests/
+__tests__/
+coverage/
+.nyc_output/
 
-# Coverage directory used by tools like istanbul
-coverage
-
-# nyc test coverage
-.nyc_output
-
-# Docker files (for multi-stage builds)
-#Dockerfile*
-#docker-compose*.yml
-
-# Development and testing
-.docker
-.jest
-.cache
-test
-tests
-__tests__
+# Build outputs
+dist/
+build/
 
 # Temporary files
-tmp
-temp
+tmp/
+temp/
+
+# Docker compose files (not needed in image)
+docker-compose*.yml
+
+# Scripts that shouldn't be in image
+scripts/aws-setup.sh
+scripts/scale-deploy.sh
+
+# Client code (server-only deployment)
+../client/
+
+# SSL certs (mounted as volumes)
+nginx/ssl/
+*.pem
+*.key
+
+# Runtime data that should be volumes
+backups/
+monitoring/
+*.rdb
+*.aof

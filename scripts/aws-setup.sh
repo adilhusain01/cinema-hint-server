@@ -244,15 +244,15 @@ install_monitoring() {
 create_app_structure() {
     log "Creating application directory structure..."
     
-    # Create main directory
-    mkdir -p /home/ubuntu/MovieRecommendor
-    cd /home/ubuntu/MovieRecommendor
+    # Create main directory for server
+    mkdir -p /home/ubuntu/cinemahint-server
+    cd /home/ubuntu/cinemahint-server
     
     # Create subdirectories
     mkdir -p logs backups monitoring nginx/ssl scripts
     
     # Set permissions
-    sudo chown -R ubuntu:ubuntu /home/ubuntu/MovieRecommendor
+    sudo chown -R ubuntu:ubuntu /home/ubuntu/cinemahint-server
     
     info "Application directory structure created."
 }
@@ -355,7 +355,7 @@ main() {
     
     info "Next steps:"
     echo "1. Configure AWS credentials if using S3 backup: aws configure"
-    echo "2. Clone your repository: git clone <your-repo-url> /home/ubuntu/MovieRecommendor"
+    echo "2. Clone your server repository: git clone <your-server-repo-url> /home/ubuntu/cinemahint-server"
     echo "3. Copy your .env file with production values"
     echo "4. Run the deployment script: ./scripts/deploy.sh"
     echo ""
