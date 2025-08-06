@@ -105,63 +105,87 @@ router.get('/popular/:genres?', authMiddleware, cacheTMDBPopular, async (req, re
       }
     }
 
-    // Use cached TMDB service instead of direct API calls
-    let topRatedData, recentData;
-    
     try {
-      // Use genre string for caching
-      const genreString = baseParams.with_genres || 'all';
-      topRatedData = await tmdbCacheService.getPopularMovies(genreString, 1);
+      // Get multiple pages to have more variety for user personalization
+      const numPages = 3; // Get 3 pages of results to have more variety
+      const allTopRatedMovies = [];
+      const allRecentMovies = [];
       
-      // Get recent movies (different sort)
-      const recentParams = { ...baseParams, sort_by: 'release_date.desc' };
-      const recentGenreString = recentParams.with_genres || 'all';
-      recentData = await tmdbCacheService.getPopularMovies(`recent-${recentGenreString}`, 1);
-    } catch (error) {
-      console.error('Error fetching from TMDB cache service:', error);
-      // Fallback to original API calls if cache service fails
-    }
-    try {
-      // Try to get a mix of classic and recent quality movies
-      [topRatedData, recentData] = await Promise.all([
-
-        // Get top-rated movies of all time for this genre
-        tmdbRequest(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&` + 
-          new URLSearchParams({
-            ...baseParams,
-            'primary_release_date.lte': '2020-12-31'
-          })),
+      // Fetch multiple pages of both classic and recent movies for variety
+      const topRatedPromises = [];
+      const recentPromises = [];
+      
+      for (let page = 1; page <= numPages; page++) {
+        // Classic movies (pre-2021)
+        topRatedPromises.push(
+          tmdbRequest(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&` + 
+            new URLSearchParams({
+              ...baseParams,
+              'primary_release_date.lte': '2020-12-31',
+              'page': page
+            }))
+        );
         
-        // Get recent well-rated movies
-        tmdbRequest(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&` + 
-          new URLSearchParams({
-            ...baseParams,
-            'primary_release_date.gte': '2021-01-01',
-            'sort_by': 'popularity.desc' // For recent movies, prioritize popularity
-          }))
-      ]);
-
-      // console.log(topRatedData);
-      // console.log(recentData);
+        // Recent movies (2021+)
+        recentPromises.push(
+          tmdbRequest(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&` + 
+            new URLSearchParams({
+              ...baseParams,
+              'primary_release_date.gte': '2021-01-01',
+              'sort_by': 'popularity.desc',
+              'page': page
+            }))
+        );
+      }
       
+      const [topRatedResults, recentResults] = await Promise.all([
+        Promise.all(topRatedPromises),
+        Promise.all(recentPromises)
+      ]);
+      
+      // Combine all results
+      topRatedResults.forEach(result => {
+        if (result && result.results) {
+          allTopRatedMovies.push(...result.results);
+        }
+      });
+      
+      recentResults.forEach(result => {
+        if (result && result.results) {
+          allRecentMovies.push(...result.results);
+        }
+      });
 
       // Convert Set to Array for includes()
       const ratedMovieIdsArray = Array.from(ratedMovieIds);
       
-      // Combine and filter results
-      let allMovies = [...topRatedData.results, ...recentData.results]
+      // Combine all movies from both classic and recent sources
+      let allMovies = [...allTopRatedMovies, ...allRecentMovies]
         .filter(movie => 
           movie.poster_path && // Must have a poster
           movie.overview && // Must have a description
           !ratedMovieIdsArray.includes(movie.id) // Haven't been rated by user
         )
+        // Remove duplicates based on movie ID
+        .reduce((unique, movie) => {
+          if (!unique.find(m => m.id === movie.id)) {
+            unique.push(movie);
+          }
+          return unique;
+        }, [])
         .sort((a, b) => {
-          // Custom sorting: balance between rating, popularity, and vote count
-          const scoreA = (a.vote_average * Math.log10(a.vote_count)) * (a.popularity / 100);
-          const scoreB = (b.vote_average * Math.log10(b.vote_count)) * (b.popularity / 100);
-          return scoreB - scoreA;
+          // Custom sorting with some randomization to provide variety
+          const scoreA = (a.vote_average * Math.log10(a.vote_count || 1)) * (a.popularity / 100);
+          const scoreB = (b.vote_average * Math.log10(b.vote_count || 1)) * (b.popularity / 100);
+          // Add small random factor to prevent same ordering every time
+          const randomFactor = (Math.random() - 0.5) * 0.1;
+          return (scoreB - scoreA) + randomFactor;
         })
-        .slice(0, 8) // Take top 8 after sorting
+        .slice(0, Math.min(16, allMovies.length)) // Take top 16 candidates
+        
+        // Randomly shuffle the top candidates and take 8 for final variety
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 8)
         .map(movie => ({
           tmdbId: movie.id,
           title: movie.title,

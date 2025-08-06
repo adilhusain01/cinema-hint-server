@@ -60,12 +60,37 @@ router.get('/history', authMiddleware, cacheRecommendationHistory, async (req, r
 router.get('/preferences', authMiddleware, cacheUserPreferences, async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
-      .select('preferences')
-      .lean();
+      .select('preferences');
       
-    // console.log(user);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
     
-    res.json(user.preferences || {});
+    // Convert Maps to plain objects for JSON serialization
+    const preferences = {
+      likedMovies: {},
+      dislikedMovies: {}
+    };
+    
+    // Convert likedMovies Map to object
+    if (user.preferences.likedMovies instanceof Map) {
+      for (const [genre, movies] of user.preferences.likedMovies.entries()) {
+        preferences.likedMovies[genre] = movies;
+      }
+    } else if (user.preferences.likedMovies) {
+      preferences.likedMovies = user.preferences.likedMovies;
+    }
+    
+    // Convert dislikedMovies Map to object  
+    if (user.preferences.dislikedMovies instanceof Map) {
+      for (const [genre, movies] of user.preferences.dislikedMovies.entries()) {
+        preferences.dislikedMovies[genre] = movies;
+      }
+    } else if (user.preferences.dislikedMovies) {
+      preferences.dislikedMovies = user.preferences.dislikedMovies;
+    }
+    
+    res.json(preferences);
   } catch (error) {
     console.error('Error fetching preferences:', error);
     res.status(500).json({ error: 'Failed to fetch preferences' });
