@@ -30,6 +30,7 @@ console.log('TMDB API Key exists:', !!process.env.TMDB_API_KEY);
 EOF
 ```
 
+
 ### Step 2: Check Environment Variables
 
 ```bash
