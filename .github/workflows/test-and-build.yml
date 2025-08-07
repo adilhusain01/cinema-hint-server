@@ -119,9 +119,8 @@ jobs:
       
     - name: Build Docker image
       run: |
-        # Build the production image
+        # Build the Docker image
         docker build \
-          --target production \
           --tag cinemahint:latest \
           --tag cinemahint:${{ github.sha }} \
           .

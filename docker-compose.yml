@@ -51,7 +51,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: production
     container_name: cinemahint-app
     restart: unless-stopped
     ports:
