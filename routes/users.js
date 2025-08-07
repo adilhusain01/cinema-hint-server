@@ -299,7 +299,7 @@ router.get('/watchlist/check/:tmdbId', authMiddleware, async (req, res) => {
 });
 
 // Remove movie from liked movies
-router.delete('/preferences/liked/:tmdbId', authMiddleware, async (req, res) => {
+router.delete('/preferences/liked/:tmdbId', authMiddleware, invalidateUserCache, async (req, res) => {
   try {
     const { tmdbId } = req.params;
     const user = await User.findById(req.user._id);
@@ -327,7 +327,7 @@ router.delete('/preferences/liked/:tmdbId', authMiddleware, async (req, res) => 
 });
 
 // Remove movie from disliked movies
-router.delete('/preferences/disliked/:tmdbId', authMiddleware, async (req, res) => {
+router.delete('/preferences/disliked/:tmdbId', authMiddleware, invalidateUserCache, async (req, res) => {
   try {
     const { tmdbId } = req.params;
     const user = await User.findById(req.user._id);
