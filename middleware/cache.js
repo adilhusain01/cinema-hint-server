@@ -44,13 +44,13 @@ const cacheMiddleware = (keyGenerator, ttl = 300) => {
 
 // User profile cache middleware
 const cacheUserProfile = cacheMiddleware(
-  (req) => redisManager.constructor.keys.userProfile(req.user.userId),
+  (req) => redisManager.constructor.keys.userProfile(req.user._id.toString()),
   redisManager.constructor.TTL.USER_PROFILE
 );
 
 // User preferences cache middleware
 const cacheUserPreferences = cacheMiddleware(
-  (req) => redisManager.constructor.keys.userPreferences(req.user.userId),
+  (req) => redisManager.constructor.keys.userPreferences(req.user._id.toString()),
   redisManager.constructor.TTL.USER_PREFERENCES
 );
 
@@ -68,7 +68,7 @@ const cacheTMDBPopular = cacheMiddleware(
 
 // Recommendation history cache middleware
 const cacheRecommendationHistory = cacheMiddleware(
-  (req) => redisManager.constructor.keys.recommendationHistory(req.user.userId),
+  (req) => redisManager.constructor.keys.recommendationHistory(req.user._id.toString()),
   redisManager.constructor.TTL.RECOMMENDATION_HISTORY
 );
 
@@ -81,8 +81,8 @@ const invalidateUserCache = async (req, res, next) => {
     // Override json method to invalidate cache after response
     res.json = function(data) {
       // If response was successful, invalidate user cache
-      if (res.statusCode >= 200 && res.statusCode < 300 && req.user?.userId) {
-        redisManager.invalidateUserCache(req.user.userId).catch(err => {
+      if (res.statusCode >= 200 && res.statusCode < 300 && req.user?._id) {
+        redisManager.invalidateUserCache(req.user._id.toString()).catch(err => {
           console.error('Cache invalidation error:', err);
         });
       }
