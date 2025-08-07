@@ -1,0 +1,64 @@
+name: Emergency Disk Cleanup
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  cleanup:
+    name: Emergency Disk Cleanup
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Emergency Cleanup on EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          echo "🆘 EMERGENCY DISK CLEANUP STARTED"
+          echo "================================="
+          
+          echo "💾 Disk usage BEFORE cleanup:"
+          df -h
+          
+          echo "🛑 Stopping ALL containers..."
+          docker kill $(docker ps -q) 2>/dev/null || true
+          docker stop $(docker ps -aq) 2>/dev/null || true
+          docker rm $(docker ps -aq) 2>/dev/null || true
+          
+          echo "🗑️ Removing ALL Docker resources..."
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+          docker image prune -af || true
+          docker volume prune -f || true
+          docker network prune -f || true
+          
+          echo "🧹 Cleaning system files..."
+          sudo rm -rf /var/lib/docker/overlay2/* 2>/dev/null || true
+          sudo rm -rf /var/lib/docker/tmp/* 2>/dev/null || true
+          sudo rm -rf /tmp/* /var/tmp/* 2>/dev/null || true
+          sudo rm -rf ~/.npm /root/.npm 2>/dev/null || true
+          
+          echo "📝 Cleaning logs..."
+          sudo rm -rf /var/log/*.log 2>/dev/null || true
+          sudo find /var/log -name "*.log" -delete 2>/dev/null || true
+          
+          echo "📦 Cleaning package caches..."
+          sudo apt-get clean 2>/dev/null || true
+          sudo rm -rf /var/lib/apt/lists/* 2>/dev/null || true
+          
+          echo "🏗️ Restarting Docker service..."
+          sudo systemctl restart docker
+          
+          echo "⏳ Waiting for Docker to start..."
+          sleep 10
+          
+          echo "💾 Disk usage AFTER cleanup:"
+          df -h
+          
+          echo "✅ EMERGENCY CLEANUP COMPLETED!"
+          echo "🔄 You can now retry deployment."

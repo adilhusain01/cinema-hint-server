@@ -125,8 +125,19 @@ jobs:
           
           # Aggressive cleanup before build to free disk space
           echo "🧹 Aggressive cleanup to free disk space..."
+          
+          # Stop all Docker processes first
+          docker kill $(docker ps -q) 2>/dev/null || true
+          docker rm $(docker ps -aq) 2>/dev/null || true
+          
+          # Remove all Docker resources
           docker system prune -af --volumes
           docker builder prune -af
+          docker image prune -af
+          
+          # Remove Docker overlay directories that might be stuck
+          sudo rm -rf /var/lib/docker/overlay2/* 2>/dev/null || true
+          sudo rm -rf /var/lib/docker/tmp/* 2>/dev/null || true
           
           # Remove old backup logs (keep only last 5)
           find backups/ -name "*.log" -type f | head -n -5 | xargs rm -f 2>/dev/null || true

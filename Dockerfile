@@ -1,42 +1,28 @@
-# CinemaHint Server-Only Docker Build
-FROM node:18-alpine AS base
+# CinemaHint Server - Single Stage Build (Space Optimized)
+FROM node:18-alpine
 
-# Install system dependencies
-RUN apk add --no-cache \
-    tini \
-    curl \
+# Install system dependencies and create user in one layer
+RUN apk add --no-cache tini curl \
     && addgroup -g 1001 -S nodejs \
     && adduser -S cinemahint -u 1001
-
-# Set working directory
-WORKDIR /app
-
-# =============================================
-# DEPENDENCIES STAGE
-# =============================================
-FROM base AS dependencies
-
-# Copy package files
-COPY package*.json ./
-
-# Install production dependencies with optimized flags
-RUN npm ci --omit=dev --no-audit --no-fund --prefer-offline \
-    && npm cache clean --force \
-    && rm -rf ~/.npm
-
-# =============================================
-# PRODUCTION STAGE
-# =============================================
-FROM base AS production
 
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=5000
 
-# Copy production dependencies
-COPY --from=dependencies --chown=cinemahint:nodejs /app/node_modules ./node_modules
+# Set working directory
+WORKDIR /app
 
-# Copy server source code
+# Copy package files first (for better caching)
+COPY package*.json ./
+
+# Install dependencies directly (no intermediate stage to avoid large COPY)
+RUN npm ci --omit=dev --no-audit --no-fund --prefer-offline \
+    && npm cache clean --force \
+    && rm -rf ~/.npm /tmp/* \
+    && chown -R cinemahint:nodejs /app
+
+# Copy source code
 COPY --chown=cinemahint:nodejs . .
 
 # Create logs directory
