@@ -73,7 +73,7 @@ jobs:
           sleep 45
           
           # Health check
-          if curl -f https://cinemahint.adilhusain.me/api/health; then
+          if curl -f https://api.cinemahint.com/api/health; then
             echo "✅ Rollback successful! Application is healthy."
             echo "📝 Rollback details saved to: rollbacks/emergency/"
           else

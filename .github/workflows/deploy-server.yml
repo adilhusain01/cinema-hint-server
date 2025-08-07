@@ -174,7 +174,7 @@ jobs:
           fi
           
           # Test external access (if nginx is working)
-          if curl -f https://cinemahint.adilhusain.me/api/health 2>/dev/null; then
+          if curl -f https://api.cinemahint.com/api/health 2>/dev/null; then
             echo "✅ External HTTPS access working!"
           else
             echo "⚠️ External HTTPS access failed (might be nginx issue)"
@@ -214,7 +214,7 @@ jobs:
           echo "🧪 Testing API endpoints..."
           
           # Health endpoint
-          if curl -f https://cinemahint.adilhusain.me/api/health; then
+          if curl -f https://api.cinemahint.com/api/health; then
             echo "✅ Health endpoint working"
           else
             echo "❌ Health endpoint failed"
@@ -233,7 +233,7 @@ jobs:
       if: always()
       run: |
         if [ "${{ job.status }}" == "success" ]; then
-          echo "🎉 Deployment to https://cinemahint.adilhusain.me was successful!"
+          echo "🎉 Deployment to https://api.cinemahint.com was successful!"
         else
           echo "❌ Deployment failed. Check the logs above for details."
           exit 1
