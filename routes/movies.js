@@ -143,24 +143,34 @@ router.get('/popular/:genres?', authMiddleware, cacheTMDBPopular, async (req, re
         Promise.all(recentPromises)
       ]);
       
-      // Combine all results
-      topRatedResults.forEach(result => {
-        if (result && result.results) {
+      // Combine all results with error checking
+      topRatedResults.forEach((result, index) => {
+        if (result && result.results && Array.isArray(result.results)) {
           allTopRatedMovies.push(...result.results);
+        } else {
+          console.warn(`Top-rated movies page ${index + 1} returned no results or invalid data`);
         }
       });
       
-      recentResults.forEach(result => {
-        if (result && result.results) {
+      recentResults.forEach((result, index) => {
+        if (result && result.results && Array.isArray(result.results)) {
           allRecentMovies.push(...result.results);
+        } else {
+          console.warn(`Recent movies page ${index + 1} returned no results or invalid data`);
         }
       });
+      
+      // Check if we have any movies at all
+      if (allTopRatedMovies.length === 0 && allRecentMovies.length === 0) {
+        console.error('No movies returned from TMDB API');
+        return res.status(500).json({ error: 'No movies available. Please try again later.' });
+      }
 
       // Convert Set to Array for includes()
       const ratedMovieIdsArray = Array.from(ratedMovieIds);
       
       // Combine all movies from both classic and recent sources
-      let allMovies = [...allTopRatedMovies, ...allRecentMovies]
+      let combinedMovies = [...allTopRatedMovies, ...allRecentMovies]
         .filter(movie => 
           movie.poster_path && // Must have a poster
           movie.overview && // Must have a description
@@ -180,9 +190,11 @@ router.get('/popular/:genres?', authMiddleware, cacheTMDBPopular, async (req, re
           // Add small random factor to prevent same ordering every time
           const randomFactor = (Math.random() - 0.5) * 0.1;
           return (scoreB - scoreA) + randomFactor;
-        })
-        .slice(0, Math.min(16, allMovies.length)) // Take top 16 candidates
-        
+        });
+
+      // Take top candidates and shuffle for variety
+      let allMovies = combinedMovies
+        .slice(0, Math.min(16, combinedMovies.length)) // Take top 16 candidates
         // Randomly shuffle the top candidates and take 8 for final variety
         .sort(() => Math.random() - 0.5)
         .slice(0, 8)
