@@ -31,12 +31,23 @@ app.use(morgan('combined'));
 
 // CORS configuration
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'http://localhost:5173',
-  'http://localhost:5174',
+  // Development origins
+  'http://localhost:5173',
+  'http://localhost:5174', 
   'http://localhost:5175',
   'http://localhost:3000',
-  'http://localhost:3001'
+  'http://localhost:3001',
+  // Production origins
+  process.env.FRONTEND_URL || 'https://cinemahint.com'
 ];
+
+// Add additional allowed origins from environment
+if (process.env.ALLOWED_ORIGINS) {
+  const additionalOrigins = process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim());
+  allowedOrigins.push(...additionalOrigins);
+}
+
+console.log('🌐 CORS allowed origins:', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
