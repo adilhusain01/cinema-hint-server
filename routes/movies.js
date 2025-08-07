@@ -20,6 +20,35 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 
+// Genre mapping utility - convert TMDB genre IDs to readable names
+const GENRE_ID_TO_NAME = {
+  28: 'Action',
+  12: 'Adventure', 
+  16: 'Animation',
+  35: 'Comedy',
+  80: 'Crime',
+  99: 'Documentary',
+  18: 'Drama',
+  10751: 'Family',
+  14: 'Fantasy',
+  36: 'History',
+  27: 'Horror',
+  10402: 'Music',
+  9648: 'Mystery',
+  10749: 'Romance',
+  878: 'Science Fiction',
+  10770: 'TV Movie',
+  53: 'Thriller',
+  10752: 'War',
+  37: 'Western'
+};
+
+// Convert TMDB genre IDs to genre names
+const convertGenreIdsToNames = (genreIds) => {
+  if (!Array.isArray(genreIds)) return [];
+  return genreIds.map(id => GENRE_ID_TO_NAME[id]).filter(Boolean);
+};
+
 // Configure axios instance for TMDB requests
 const tmdbRequest = async (url) => {
   try {
@@ -203,7 +232,7 @@ router.get('/popular/:genres?', authMiddleware, cacheTMDBPopular, async (req, re
           title: movie.title,
           year: movie.release_date ? new Date(movie.release_date).getFullYear() : null,
           rating: movie.vote_average,
-          genres: movie.genre_ids,
+          genres: convertGenreIdsToNames(movie.genre_ids),
           posterPath: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null,
         }));
 
@@ -231,7 +260,7 @@ router.get('/popular/:genres?', authMiddleware, cacheTMDBPopular, async (req, re
             title: movie.title,
             year: movie.release_date ? new Date(movie.release_date).getFullYear() : null,
             rating: movie.vote_average,
-            genres: movie.genre_ids,
+            genres: convertGenreIdsToNames(movie.genre_ids),
             posterPath: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null,
           }));
 
