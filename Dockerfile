@@ -19,8 +19,10 @@ FROM base AS dependencies
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install production dependencies with optimized flags
+RUN npm ci --omit=dev --no-audit --no-fund --prefer-offline \
+    && npm cache clean --force \
+    && rm -rf ~/.npm
 
 # =============================================
 # PRODUCTION STAGE
