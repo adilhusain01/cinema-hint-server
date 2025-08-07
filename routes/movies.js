@@ -862,7 +862,33 @@ router.get('/gallery', async (req, res) => {
   }
 });
 
-// Fetch movie from TMDB and save to database
+// Public route to fetch movie details (for unauthenticated users)
+router.get('/public/:tmdbId', async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    
+    // Check if movie already exists in database
+    let movie = await Movie.findOne({ tmdbId: parseInt(tmdbId) });
+    
+    if (movie) {
+      return res.json(movie);
+    }
+    
+    // Fetch from TMDB using the existing function
+    const movieDetails = await searchMovieOnTMDB(null, null, parseInt(tmdbId));
+    
+    if (!movieDetails) {
+      return res.status(404).json({ error: 'Movie not found on TMDB' });
+    }
+    
+    res.json(movieDetails);
+  } catch (error) {
+    console.error('Error fetching movie details publicly:', error);
+    res.status(500).json({ error: 'Failed to fetch movie details' });
+  }
+});
+
+// Fetch movie from TMDB and save to database (authenticated route)
 router.post('/fetch-tmdb/:tmdbId', authMiddleware, async (req, res) => {
   try {
     const { tmdbId } = req.params;
