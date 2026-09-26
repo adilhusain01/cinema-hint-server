@@ -1,0 +1,1 @@
+added some favicons and logo in the client assets folder, use them instead io existing ones 

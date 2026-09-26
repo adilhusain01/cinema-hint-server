@@ -2,3 +2,9 @@
 node_modules
 app.log
 logs
+.env.*
+!.env.example
+.DS_Store
+dist
+build
+coverage

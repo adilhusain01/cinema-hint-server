@@ -2,12 +2,35 @@
 
 This is the server-only deployment for CinemaHint movie recommendation API. The client will be deployed separately to Vercel.
 
+The frontend lives in [cinema-hint-client](https://github.com/adilhusain01/cinema-hint-client). Project-wide notes (architecture, deployment, tasks) are in [`docs/project/`](docs/project/).
+
+## 💻 Local Development
+
+### Prerequisites
+
+- Node.js 20+ and npm
+- MongoDB (local or Atlas connection string)
+- Redis (optional locally; `docker compose up redis` works)
+- API keys: TMDB, OpenAI, Google OAuth client
+
+### Setup
+
+```bash
+git clone git@github.com:adilhusain01/cinema-hint-server.git
+cd cinema-hint-server
+npm install
+cp .env.example .env   # fill in MONGODB_URI, JWT_SECRET, GOOGLE_CLIENT_ID/SECRET, TMDB_API_KEY, OPENAI_API_KEY, FRONTEND_URL
+npm run dev            # nodemon server.js
+```
+
+Other scripts: `npm start` (production), `npm test` (Jest).
+
 ## 🚀 Quick AWS EC2 Deployment
 
 ### 1. Setup EC2 Instance
 ```bash
 # On your EC2 instance
-wget https://raw.githubusercontent.com/your-username/MovieRecommendor/main/server/scripts/aws-setup.sh
+wget https://raw.githubusercontent.com/adilhusain01/cinema-hint-server/main/scripts/aws-setup.sh
 chmod +x aws-setup.sh
 ./aws-setup.sh
 ```
@@ -17,9 +40,7 @@ chmod +x aws-setup.sh
 # Navigate to server directory
 cd /home/ubuntu/cinemahint-server
 
-# Clone only the server folder (or full repo and navigate to server)
-git clone https://github.com/your-username/MovieRecommendor.git .
-cd server
+git clone https://github.com/adilhusain01/cinema-hint-server.git .
 ```
 
 ### 3. Configure Environment
